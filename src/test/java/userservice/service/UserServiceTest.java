@@ -6,8 +6,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import userservice.dao.UserDao;
+import org.springframework.data.domain.Sort;
 import userservice.entity.User;
+import userservice.repository.UserRepository;
 
 import java.util.List;
 import java.util.Optional;
@@ -22,85 +23,77 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {
 
     @Mock
-    private UserDao userDao;
+    private UserRepository userRepository;
 
     @InjectMocks
     private UserService userService;
 
-
     @Test
-    void createUser_shouldValidateAndDelegateToDao() {//проверка корректного создания пользователя
-        when(userDao.create(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+    void createUser_shouldValidateAndDelegateToRepository() {
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         userService.createUser("  Иван  ", "  ivan@test.com  ", 25);
 
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
-        verify(userDao).create(captor.capture());
+        verify(userRepository).save(captor.capture());
         assertEquals("Иван", captor.getValue().getName());
         assertEquals("ivan@test.com", captor.getValue().getEmail());
         assertEquals(25, captor.getValue().getAge());
     }
 
-
     @Test
-    void createUser_shouldThrowWhenNameIsBlank() {//проверка имени
+    void createUser_shouldThrowWhenNameIsBlank() {
         assertThrows(IllegalArgumentException.class,
                 () -> userService.createUser("  ", "ivan@test.com", 25));
-        verify(userDao, never()).create(any());
+        verify(userRepository, never()).save(any());
     }
 
-
     @Test
-    void createUser_shouldThrowWhenEmailIsInvalid() {//проверка email
+    void createUser_shouldThrowWhenEmailIsInvalid() {
         assertThrows(IllegalArgumentException.class,
                 () -> userService.createUser("Иван", "invalid", 25));
-        verify(userDao, never()).create(any());
+        verify(userRepository, never()).save(any());
     }
 
-
     @Test
-    void createUser_shouldThrowWhenAgeIsOutOfRange() {//проверка возраста
+    void createUser_shouldThrowWhenAgeIsOutOfRange() {
         assertThrows(IllegalArgumentException.class,
                 () -> userService.createUser("Иван", "ivan@test.com", 200));
-        verify(userDao, never()).create(any());
+        verify(userRepository, never()).save(any());
     }
 
-
     @Test
-    void getUserById_shouldReturnUserFromDao() {//проверка получения по id
+    void getUserById_shouldReturnUserFromRepository() {
         User user = new User("Иван", "ivan@test.com", 25);
-        when(userDao.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
 
         Optional<User> result = userService.getUserById(1L);
 
         assertTrue(result.isPresent());
         assertEquals("Иван", result.get().getName());
-        verify(userDao).findById(1L);
+        verify(userRepository).findById(1L);
     }
 
-
     @Test
-    void getAllUsers_shouldReturnListFromDao() {//проверка получения всех пользователей
+    void getAllUsers_shouldReturnListFromRepository() {
         User user = new User("Иван", "ivan@test.com", 25);
-        when(userDao.findAll()).thenReturn(List.of(user));
+        when(userRepository.findAll((Sort) any())).thenReturn(List.of(user));
 
         List<User> result = userService.getAllUsers();
 
         assertEquals(1, result.size());
-        verify(userDao).findAll();
+        verify(userRepository).findAll((Sort) any());
     }
 
-
     @Test
-    void updateUser_shouldUpdateExistingUser() {//проверка обновления пользователя
+    void updateUser_shouldUpdateExistingUser() {
         User existing = new User("Иван", "ivan@test.com", 25);
-        when(userDao.findById(1L)).thenReturn(Optional.of(existing));
-        when(userDao.update(existing)).thenReturn(existing);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(userRepository.save(existing)).thenReturn(existing);
 
         Optional<User> result = userService.updateUser(1L, "Пётр", "petr@test.com", 30);
 
@@ -108,40 +101,36 @@ class UserServiceTest {
         assertEquals("Пётр", existing.getName());
         assertEquals("petr@test.com", existing.getEmail());
         assertEquals(30, existing.getAge());
-        verify(userDao).update(existing);
+        verify(userRepository).save(existing);
     }
 
-
     @Test
-    void updateUser_shouldReturnEmptyWhenUserNotFound() {//проверка обновления несуществующего пользователя
-        when(userDao.findById(99L)).thenReturn(Optional.empty());
+    void updateUser_shouldReturnEmptyWhenUserNotFound() {
+        when(userRepository.findById(99L)).thenReturn(Optional.empty());
 
         Optional<User> result = userService.updateUser(99L, "Пётр", "petr@test.com", 30);
 
         assertTrue(result.isEmpty());
-        verify(userDao, never()).update(any());
+        verify(userRepository, never()).save(any());
     }
 
-
     @Test
-    void deleteUser_shouldReturnTrueWhenUserExists() {//проверка удаления
-        User existing = new User("Иван", "ivan@test.com", 25);
-        when(userDao.findById(1L)).thenReturn(Optional.of(existing));
+    void deleteUser_shouldReturnTrueWhenUserExists() {
+        when(userRepository.existsById(1L)).thenReturn(true);
 
         boolean deleted = userService.deleteUser(1L);
 
         assertTrue(deleted);
-        verify(userDao).deleteById(1L);
+        verify(userRepository).deleteById(1L);
     }
 
-
     @Test
-    void deleteUser_shouldReturnFalseWhenUserNotFound() {//проверка удаления несуществующего пользователя
-        when(userDao.findById(99L)).thenReturn(Optional.empty());
+    void deleteUser_shouldReturnFalseWhenUserNotFound() {
+        when(userRepository.existsById(99L)).thenReturn(false);
 
         boolean deleted = userService.deleteUser(99L);
 
         assertFalse(deleted);
-        verify(userDao, never()).deleteById(anyLong());
+        verify(userRepository, never()).deleteById(anyLong());
     }
 }
