@@ -1,51 +1,55 @@
 package userservice.service;
 
-import userservice.dao.UserDao;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import userservice.entity.User;
+import userservice.repository.UserRepository;
 
 import java.util.List;
 import java.util.Optional;
 
+@Service
 public class UserService {
 
-    private final UserDao userDao;
+    private final UserRepository userRepository;
 
-    public UserService(UserDao userDao) {
-        this.userDao = userDao;
+    public UserService(UserRepository userRepository) {
+        this.userRepository = userRepository;
     }
 
+    @Transactional
     public User createUser(String name, String email, Integer age) {
         validate(name, email, age);
-        return userDao.create(new User(name.trim(), email.trim(), age));
+        return userRepository.save(new User(name.trim(), email.trim(), age));
     }
 
     public Optional<User> getUserById(Long id) {
-        return userDao.findById(id);
+        return userRepository.findById(id);
     }
 
     public List<User> getAllUsers() {
-        return userDao.findAll();
+        return userRepository.findAll(Sort.by("id"));
     }
 
+    @Transactional
     public Optional<User> updateUser(Long id, String name, String email, Integer age) {
         validate(name, email, age);
-        Optional<User> existing = userDao.findById(id);
-        if (existing.isEmpty()) {
-            return Optional.empty();
-        }
-        User user = existing.get();
-        user.setName(name.trim());
-        user.setEmail(email.trim());
-        user.setAge(age);
-        return Optional.of(userDao.update(user));
+        return userRepository.findById(id)
+                .map(user -> {
+                    user.setName(name.trim());
+                    user.setEmail(email.trim());
+                    user.setAge(age);
+                    return userRepository.save(user);
+                });
     }
 
+    @Transactional
     public boolean deleteUser(Long id) {
-        Optional<User> existing = userDao.findById(id);
-        if (existing.isEmpty()) {
+        if (!userRepository.existsById(id)) {
             return false;
         }
-        userDao.deleteById(id);
+        userRepository.deleteById(id);
         return true;
     }
 
