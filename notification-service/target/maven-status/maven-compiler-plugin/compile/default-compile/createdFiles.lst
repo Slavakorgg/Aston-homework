@@ -1,0 +1,12 @@
+notificationservice\service\NotificationService.class
+notificationservice\dto\NotificationResponseDto.class
+notificationservice\dto\UserEventMessage.class
+notificationservice\exception\GlobalExceptionHandler.class
+notificationservice\NotificationApplication.class
+notificationservice\dto\NotificationRequestDto.class
+notificationservice\service\ConsoleNotificationSender.class
+notificationservice\controller\NotificationController.class
+notificationservice\service\NotificationSender.class
+notificationservice\kafka\UserEventConsumer.class
+notificationservice\dto\UserOperation.class
+notificationservice\service\NotificationService$1.class
