@@ -4,9 +4,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import userservice.entity.User;
+import userservice.model.UserModelAssembler;
 import userservice.service.UserService;
 
 import java.util.List;
@@ -23,6 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(UserController.class)
+@Import(UserModelAssembler.class)
 class UserControllerTest {
 
     @Autowired
@@ -38,8 +41,9 @@ class UserControllerTest {
 
         mockMvc.perform(get("/api/users"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].name").value("Иван"))
-                .andExpect(jsonPath("$[0].email").value("ivan@test.com"));
+                .andExpect(jsonPath("$._embedded.users[0].name").value("Иван"))
+                .andExpect(jsonPath("$._embedded.users[0].email").value("ivan@test.com"))
+                .andExpect(jsonPath("$._links.self.href").exists());
     }
 
     @Test
@@ -49,7 +53,8 @@ class UserControllerTest {
 
         mockMvc.perform(get("/api/users/1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.name").value("Иван"));
+                .andExpect(jsonPath("$.name").value("Иван"))
+                .andExpect(jsonPath("$._links.self.href").exists());
     }
 
     @Test
@@ -72,7 +77,8 @@ class UserControllerTest {
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.name").value("Иван"))
-                .andExpect(jsonPath("$.email").value("ivan@test.com"));
+                .andExpect(jsonPath("$.email").value("ivan@test.com"))
+                .andExpect(jsonPath("$._links.self.href").exists());
     }
 
     @Test
@@ -87,7 +93,8 @@ class UserControllerTest {
                                 {"name":"Пётр","email":"petr@test.com","age":30}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.name").value("Пётр"));
+                .andExpect(jsonPath("$.name").value("Пётр"))
+                .andExpect(jsonPath("$._links.update.href").exists());
     }
 
     @Test
