@@ -1,12 +1,34 @@
+x-java-service: &java-service
+  image: eclipse-temurin:17-jre
+  working_dir: /app
+  command: ["java", "-jar", "app.jar"]
+  networks:
+    - aston-network
+  restart: unless-stopped
+
 services:
+  jar-builder:
+    image: maven:3.9-eclipse-temurin-17
+    profiles: [build]
+    working_dir: /build
+    volumes:
+      - .:/build
+      - maven-repo:/root/.m2
+    command: ["mvn", "-B", "-DskipTests", "package"]
+
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.1
+    container_name: zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - aston-network
+    restart: unless-stopped
 
   kafka:
     image: confluentinc/cp-kafka:7.6.1
+    container_name: kafka
     depends_on:
       - zookeeper
     ports:
@@ -14,16 +36,127 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_INTERNAL://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:29092"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - aston-network
+    restart: unless-stopped
 
   postgres:
     image: postgres:16-alpine
+    container_name: postgres
     ports:
       - "5432:5432"
     environment:
       POSTGRES_DB: user_service
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d user_service"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - aston-network
+    restart: unless-stopped
+
+  config-server:
+    <<: *java-service
+    container_name: config-server
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./config-server/target/config-server-1.0.0.jar:/app/app.jar
+    environment:
+      SERVER_PORT: 8888
+
+  eureka-server:
+    <<: *java-service
+    container_name: eureka-server
+    ports:
+      - "8761:8761"
+    volumes:
+      - ./eureka-server/target/eureka-server-1.0.0.jar:/app/app.jar
+    environment:
+      SERVER_PORT: 8761
+
+  user-service:
+    <<: *java-service
+    container_name: user-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      config-server:
+        condition: service_started
+      eureka-server:
+        condition: service_started
+    volumes:
+      - ./user-service/target/user-service-1.0.0.jar:/app/app.jar
+    environment:
+      SERVER_PORT: 8080
+      SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/user_service
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      EUREKA_INSTANCE_HOSTNAME: user-service
+
+  notification-service:
+    <<: *java-service
+    container_name: notification-service
+    depends_on:
+      kafka:
+        condition: service_healthy
+      config-server:
+        condition: service_started
+      eureka-server:
+        condition: service_started
+    volumes:
+      - ./notification-service/target/notification-service-1.0.0.jar:/app/app.jar
+    environment:
+      SERVER_PORT: 8081
+      SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      EUREKA_INSTANCE_HOSTNAME: notification-service
+
+  api-gateway:
+    <<: *java-service
+    container_name: api-gateway
+    depends_on:
+      config-server:
+        condition: service_started
+      eureka-server:
+        condition: service_started
+      user-service:
+        condition: service_started
+      notification-service:
+        condition: service_started
+    ports:
+      - "8088:8088"
+    volumes:
+      - ./api-gateway/target/api-gateway-1.0.0.jar:/app/app.jar
+    environment:
+      SERVER_PORT: 8088
+      SPRING_CONFIG_IMPORT: configserver:http://config-server:8888
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      EUREKA_INSTANCE_HOSTNAME: api-gateway
+
+networks:
+  aston-network:
+    driver: bridge
+
+volumes:
+  maven-repo:
